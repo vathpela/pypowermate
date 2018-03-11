@@ -1,0 +1,19 @@
+__pycache__/
+build/
+dist/
+output/
+*.egg-info/
+*.egg
+*.so
+*~
+*.log
+*.py[cod]
+*.pyo
+*.strace
+*.tar
+*.tar.*
+.*.sw?
+
+# due to using tox and pytest
+.tox
+.cache

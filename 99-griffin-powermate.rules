@@ -1,0 +1,3 @@
+# Griffin Technology PowerMate USB control knob
+
+ACTION=="add", ENV{ID_USB_DRIVER}=="powermate", ENV{ID_VENDOR_ID}=="077d", ENV{ID_MODEL_ID}=="0410", SYMLINK+="powermate%n", MODE="0666"
