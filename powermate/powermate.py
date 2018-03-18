@@ -67,8 +67,8 @@ class PowerMate:
         try:
             for event in self.device.read():
                 self.handle_event(event)
-        except OSError as e:
-            if e.errno == errno.ENODEV:
+        except OSError as error:
+            if error.errno == errno.ENODEV:
                 return True
             else:
                 raise
@@ -172,10 +172,10 @@ class PowerMateDispatcher:
         """ this is our loop... """
         args = []
         while self.powermates:
-            r, _, _ = select.select(self.filenos, [], [], *args)
-            if r:
+            reads, _, _ = select.select(self.filenos, [], [], *args)
+            if reads:
                 args = [0.1]
-                for fileno in r:
+                for fileno in reads:
                     self.handle_read(fileno)
             else:
                 for powermate in self.powermates.values():
@@ -183,12 +183,12 @@ class PowerMateDispatcher:
                 args = []
 
 if __name__ == "__main__":
-    dispatcher = PowerMateDispatcher()
+    DISPATCHER = PowerMateDispatcher()
 
     # If we can figure out how to add them on hotplug, we won't need this.
-    if not dispatcher.powermates:
+    if not DISPATCHER.powermates:
         sys.exit(0)
 
-    dispatcher.run()
+    DISPATCHER.run()
 
 __all__ = ['PowerMateDispatcher', 'PowerMate', 'UdevMonitor']
