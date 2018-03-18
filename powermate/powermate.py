@@ -10,6 +10,9 @@ import errno
 import os
 import sys
 import select
+import math
+import time
+import itertools
 import evdev
 import pyudev
 
@@ -121,12 +124,59 @@ class PowerMate:
                     self.name, event.type, event.code, event.value))
         self.save_last(event)
 
+    # pylint: disable=too-many-arguments
+    def set_led_pulse(self, brightness=255, speed=255, pulse_table=0,
+                      pulse_while_asleep=False, pulse_while_awake=True):
+        """ Encode the pulse parameters:
+            brightness: 0 to 255
+            speed: 0 to 510, slower to faster, log scale, sortof.
+                255 = 2s ("normal")
+              So basically: 251=8s, 252=6s, 253=4s, 254=2.5s, 255=2s
+              /ish/.  I timed those values with a stopwatch, so...
+            pulse_table: 0, 1, 2 (dunno)
+            pulse_while_asleep: boolean
+            pulse_while_awake: boolean
+        """
+
+        if brightness < 0 or brightness > 255:
+            raise ValueError("brightness (%s) must be 0 through 255" %
+                             (brightness,))
+
+        if speed < 0 or speed > 510:
+            raise ValueError("speed (%s) must be 0 through 510" % (speed,))
+
+        if pulse_table < 0 or pulse_table > 2:
+            raise ValueError("pulse table (%s) must be 0, 1, or 2" %
+                             (pulse_table,))
+
+        pulse_while_awake = int(bool(pulse_while_awake))
+        pulse_while_asleep = int(bool(pulse_while_asleep))
+
+        value = (pulse_while_awake << 20) \
+                | (pulse_while_asleep << 19) \
+                | (pulse_table << 17) \
+                | (speed << 8) \
+                | brightness
+
+        mod, sec = math.modf(time.time())
+        sec = int(sec)
+        usec = int(mod * 1000000)
+        event = evdev.InputEvent(sec=sec, usec=usec, type=evdev.ecodes.EV_MSC,
+                                 code=evdev.ecodes.MSC_PULSELED, value=value)
+        self.device.write_event(event)
+
 class PowerMateDispatcher:
     """ A dispatcher for our devices """
-    def __init__(self, PowerMateClass=PowerMate, UdevMonitorClass=UdevMonitor):
+    def __init__(self, PowerMateClass=PowerMate, UdevMonitorClass=UdevMonitor,
+                 pulsegen=None):
         super().__init__()
         self._powermate_class = PowerMateClass
         self.powermates = {}
+        if pulsegen is None:
+            self.pulsegen = itertools.cycle(iter([254, 260, 255, 261, 256, 262, 257, 263, 258]))
+        else:
+            self.pulsegen = itertools.cycle(iter(pulsegen))
+
         self.udev = UdevMonitorClass()
         if hasattr(self.udev, 'fileno'):
             self.udev_fileno = self.udev.fileno()
@@ -136,6 +186,9 @@ class PowerMateDispatcher:
         for dev in filter(lambda x: x.startswith("powermate"),
                           os.listdir("/dev/")):
             powermate = self._powermate_class(dev)
+            powermate.set_led_pulse(speed=next(self.pulsegen),
+                                    pulse_while_asleep=True,
+                                    pulse_while_awake=True)
             self.powermates[powermate.fileno()] = powermate
 
     def new_powermate(self, device):
@@ -145,6 +198,9 @@ class PowerMateDispatcher:
         for devlink in device['DEVLINKS'].split(' '):
             if devlink.startswith('/dev/powermate'):
                 powermate = self._powermate_class(devlink[5:])
+                powermate.set_led_pulse(speed=next(self.pulsegen),
+                                        pulse_while_asleep=True,
+                                        pulse_while_awake=True)
                 self.powermates[powermate.fileno()] = powermate
                 break
 
